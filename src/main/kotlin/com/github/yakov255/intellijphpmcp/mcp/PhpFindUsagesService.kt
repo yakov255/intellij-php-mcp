@@ -32,10 +32,25 @@ class PhpFindUsagesService(private val project: Project) {
 
     private fun resolveMemberSymbol(fullSymbol: String): SymbolResolutionResult {
         val className = fullSymbol.substringBefore("::").trimStart('\\')
+        val memberName = fullSymbol.substringAfter("::")
         return ReadAction.compute<SymbolResolutionResult, RuntimeException> {
             val phpIndex = PhpIndex.getInstance(project)
-            if (classExists(className, phpIndex)) SymbolResolutionResult.Resolved(fullSymbol)
-            else SymbolResolutionResult.NotFound
+            if (className.contains('\\')) {
+                if (classExists(className, phpIndex)) SymbolResolutionResult.Resolved(fullSymbol)
+                else SymbolResolutionResult.NotFound
+            } else {
+                val matches = phpIndex.getClassesByName(className).mapNotNull { it.fqn }
+                when {
+                    matches.size == 1 ->
+                        SymbolResolutionResult.Resolved("${matches[0]}::$memberName")
+                    matches.isEmpty() ->
+                        SymbolResolutionResult.NotFound
+                    else ->
+                        SymbolResolutionResult.Ambiguous(
+                            matches.map { "$it::$memberName" }
+                        )
+                }
+            }
         }
     }
 

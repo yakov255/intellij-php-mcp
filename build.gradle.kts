@@ -14,7 +14,7 @@ dependencies {
         intellijIdeaUltimate("2025.2.6.2")
         testFramework(TestFrameworkType.Platform)
         bundledPlugin("com.intellij.mcpServer")
-        bundledPlugin("com.jetbrains.php")
+        plugins("com.jetbrains.php:252.28539.13")
     }
 
     val kotlinxSerializationJsonVersion = "1.7.3"
