@@ -17,6 +17,6 @@ dependencies {
         plugins("com.jetbrains.php:252.28539.13")
     }
 
-    val kotlinxSerializationJsonVersion = "1.7.3"
+    val kotlinxSerializationJsonVersion = "1.11.0"
     compileOnly("org.jetbrains.kotlinx:kotlinx-serialization-json:$kotlinxSerializationJsonVersion")
 }
