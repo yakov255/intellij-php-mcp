@@ -1,45 +1,66 @@
 # intellij-php-mcp
 
-![Build](https://github.com/yakov255/intellij-php-mcp/workflows/Build/badge.svg)
-[![Version](https://img.shields.io/jetbrains/plugin/v/MARKETPLACE_ID.svg)](https://plugins.jetbrains.com/plugin/MARKETPLACE_ID)
-[![Downloads](https://img.shields.io/jetbrains/plugin/d/MARKETPLACE_ID.svg)](https://plugins.jetbrains.com/plugin/MARKETPLACE_ID)
+MCP (Model Context Protocol) server plugin for IntelliJ‑based IDEs that exposes PHP code analysis tools to AI agents (Claude Code, GitHub Copilot, Cursor, Junie, etc.).
 
-## Template ToDo list
-- [x] Create a new [IntelliJ Platform Plugin Template][template] project.
-- [ ] Get familiar with the [template documentation][template].
-- [ ] Adjust the [group](./gradle.properties), as well as the [id](./src/main/resources/META-INF/plugin.xml), [name](./src/main/resources/META-INF/plugin.xml), and [sources package](./src/main/kotlin).
-- [ ] Adjust the plugin [description](./src/main/resources/META-INF/plugin.xml) (see [Tips][docs:plugin-description]) and this README to describe what your plugin does.
-- [ ] Review the [Legal Agreements](https://plugins.jetbrains.com/docs/marketplace/legal-agreements.html?from=IJPluginTemplate).
-- [ ] [Publish a plugin manually](https://plugins.jetbrains.com/docs/intellij/publishing-plugin.html?from=IJPluginTemplate) for the first time.
-- [ ] Set the `MARKETPLACE_ID` in the above README badges. You can obtain it once the plugin is published to JetBrains Marketplace.
-- [ ] Set the [Plugin Signing](https://plugins.jetbrains.com/docs/intellij/plugin-signing.html?from=IJPluginTemplate) related [secrets](https://github.com/JetBrains/intellij-platform-plugin-template#environment-variables).
-- [ ] Set the [Deployment Token](https://plugins.jetbrains.com/docs/marketplace/plugin-upload.html?from=IJPluginTemplate).
-- [ ] Click the <kbd>Watch</kbd> button on the top of the [IntelliJ Platform Plugin Template][template] to be notified about releases containing new features and fixes.
+## Tools
 
-This Fancy IntelliJ Platform Plugin is going to be your implementation of the brilliant ideas that you have.
+| Tool | Description |
+|---|---|
+| `find_usages` | Finds all usages of a PHP symbol — class, method (`::methodName`), field (`::$field`). Accepts FQCN or short name (with ambiguity resolution). |
+| `inspect_php_file` | Returns the public API contract of a PHP file: namespace, imports, public methods (bodies stripped), public fields. Non‑public members are removed. |
+
+## Requirements
+
+- IntelliJ IDEA Ultimate (2025.2+)
+- PHP plugin enabled
+- MCP Server plugin (bundled with IntelliJ IDEA, included automatically)
 
 ## Installation
 
-- Using the IDE built-in plugin system:
+### From source
 
-  <kbd>Settings/Preferences</kbd> > <kbd>Plugins</kbd> > <kbd>Marketplace</kbd> > <kbd>Search for "intellij-php-mcp"</kbd> >
-  <kbd>Install</kbd>
+```bash
+git clone https://github.com/yakov255/intellij-php-mcp.git
+cd intellij-php-mcp
+./gradlew build
+```
 
-- Using JetBrains Marketplace:
+The plugin JAR will be in `build/libs/`. Install it via <kbd>Settings/Preferences</kbd> > <kbd>Plugins</kbd> > <kbd>⚙️</kbd> > <kbd>Install plugin from disk…</kbd>
 
-  Go to [JetBrains Marketplace](https://plugins.jetbrains.com/plugin/MARKETPLACE_ID) and install it by clicking the <kbd>Install to ...</kbd> button in case your IDE is running.
+### Via IDE (once published)
 
-  You can also download the [latest release](https://plugins.jetbrains.com/plugin/MARKETPLACE_ID/versions) from JetBrains Marketplace and install it manually using
-  <kbd>Settings/Preferences</kbd> > <kbd>Plugins</kbd> > <kbd>⚙️</kbd> > <kbd>Install plugin from disk...</kbd>
+<kbd>Settings/Preferences</kbd> > <kbd>Plugins</kbd> > <kbd>Marketplace</kbd> > search for "PHP MCP".
 
-- Manually:
+## Configuration
 
-  Download the [latest release](https://github.com/yakov255/intellij-php-mcp/releases/latest) and install it manually using
-  <kbd>Settings/Preferences</kbd> > <kbd>Plugins</kbd> > <kbd>⚙️</kbd> > <kbd>Install plugin from disk...</kbd>
+1. Install the plugin and restart your IDE.
+2. Go to <kbd>Settings</kbd> > <kbd>Tools</kbd> > <kbd>MCP Server</kbd>.
+3. Enable the MCP Server and set a port (default: 64344).
+4. Connect your MCP client (Claude Code, etc.) to `http://localhost:<port>/sse` or `http://localhost:<port>/mcp`.
 
+## Development
 
----
-Plugin based on the [IntelliJ Platform Plugin Template][template].
+```bash
+./gradlew runIde
+```
 
-[template]: https://github.com/JetBrains/intellij-platform-plugin-template
-[docs:plugin-description]: https://plugins.jetbrains.com/docs/intellij/plugin-user-experience.html#plugin-description-and-presentation
+Run the test script against a running IDE:
+
+```bash
+./test-mcp.sh "\App\Service\EmailService"
+./test-mcp.sh -t inspect_php_file -a '{"filePath":"src/Foo.php"}'
+./test-mcp.sh -l
+```
+
+## Project structure
+
+```
+src/main/kotlin/com/github/yakov255/intellijphpmcp/mcp/
+├── PhpToolset.kt                    # MCP tool definitions
+├── PhpFindUsagesService.kt          # Symbol resolution + ReferencesSearch
+├── PhpContractInspectorService.kt   # Public API contract extraction
+```
+
+## License
+
+MIT
