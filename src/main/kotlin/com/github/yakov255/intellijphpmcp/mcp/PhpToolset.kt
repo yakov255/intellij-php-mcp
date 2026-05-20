@@ -58,6 +58,24 @@ class PhpToolset : McpToolset {
         )
     }
 
+    @McpTool
+    @McpDescription(
+        "Returns the public API contract of a PHP file: keeps public methods (with bodies stripped to signatures), " +
+        "public fields, public constants, and all use/namespace declarations. " +
+        "Removes non-public methods, fields, and method bodies. " +
+        "Use this to see what a class exposes to the outside world."
+    )
+    suspend fun inspect_php_file(
+        @McpDescription("Path to the PHP file relative to the project root")
+        filePath: String,
+        @McpDescription("Absolute path to the project root directory")
+        projectPath: String? = null,
+    ): InspectFileResult {
+        val project = resolveProject(projectPath)
+        val service = project.getService(PhpContractInspectorService::class.java)
+        return service.inspectFile(filePath)
+    }
+
     // TODO: Use McpProjectLocationInputs.resolveProject() from the MCP framework
     // for proper multi-project resolution (session headers, roots capability)
     private fun resolveProject(projectPath: String?): Project {

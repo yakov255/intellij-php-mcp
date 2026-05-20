@@ -12,6 +12,7 @@
 
     <extensions defaultExtensionNs="com.intellij">
         <projectService serviceImplementation="com.github.yakov255.intellijphpmcp.mcp.PhpFindUsagesService"/>
+        <projectService serviceImplementation="com.github.yakov255.intellijphpmcp.mcp.PhpContractInspectorService"/>
     </extensions>
 
     <extensions defaultExtensionNs="com.intellij.mcpServer">
