@@ -5,7 +5,7 @@ MCP (Model Context Protocol) server plugin for IntelliJ‑based IDEs that expose
 ## Tools overview
 
 | Tool | Description |
-|---|---|---|
+|---|---|
 | `find_usages` | Finds all usages of a PHP symbol — class, method (`::method`), field (`::$field`), interface, trait |
 | `find_definition` | Finds the declaration location — file, line, column, source line |
 | `inspect_php_file` | Returns the public API contract of a PHP file (bodies stripped, non-public removed) |
