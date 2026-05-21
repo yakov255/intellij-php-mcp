@@ -121,6 +121,8 @@ open class PhpFindUsagesService(private val project: Project) {
         val memberName = parts[1].trimStart('$')
         val phpIndex = getPhpIndex()
         val phpClass = phpIndex.getClassesByFQN(className).firstOrNull()
+            ?: phpIndex.getInterfacesByFQN(className).firstOrNull()
+            ?: phpIndex.getTraitsByFQN(className).firstOrNull()
             ?: return emptyList()
 
         phpClass.methods.firstOrNull { it.name == memberName }?.let { method ->
@@ -151,6 +153,7 @@ open class PhpFindUsagesService(private val project: Project) {
         val phpIndex = getPhpIndex()
         val phpClass = phpIndex.getClassesByFQN(className).firstOrNull()
             ?: phpIndex.getInterfacesByFQN(className).firstOrNull()
+            ?: phpIndex.getTraitsByFQN(className).firstOrNull()
             ?: return null
 
         phpClass.methods.firstOrNull { it.name == memberName }?.let { return definitionFromElement(it) }

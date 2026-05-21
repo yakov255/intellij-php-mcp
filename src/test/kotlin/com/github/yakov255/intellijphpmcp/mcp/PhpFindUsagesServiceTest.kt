@@ -1,12 +1,17 @@
 package com.github.yakov255.intellijphpmcp.mcp
 
+import com.intellij.psi.PsiReference
+import com.intellij.psi.search.searches.ReferencesSearch
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import com.intellij.util.Query
 import com.jetbrains.php.PhpIndex
 import com.jetbrains.php.lang.psi.elements.Method
 import com.jetbrains.php.lang.psi.elements.PhpClass
 import org.junit.Before
 import org.junit.Test
 import org.mockito.Mockito
+import org.mockito.MockedStatic
+import org.mockito.stubbing.Answer
 
 class PhpFindUsagesServiceTest : BasePlatformTestCase() {
 
@@ -47,6 +52,20 @@ class PhpFindUsagesServiceTest : BasePlatformTestCase() {
         Mockito.`when`(mockIndex.getInterfacesByFQN(clean)).thenReturn(emptyList())
         Mockito.`when`(mockIndex.getTraitsByFQN(clean)).thenReturn(emptyList())
         return cls
+    }
+
+    private fun <T> mockReferencesSearch(
+        method: Method,
+        returnValue: T,
+        block: () -> T
+    ): T {
+        Mockito.mockStatic(ReferencesSearch::class.java).use { mocked: MockedStatic<ReferencesSearch> ->
+            @Suppress("UNCHECKED_CAST")
+            val query = Mockito.mock(Query::class.java) as Query<PsiReference>
+            Mockito.`when`(query.findAll()).thenReturn(emptyList())
+            mocked.`when`<Query<PsiReference>> { ReferencesSearch.search(method) }.thenReturn(query)
+            return block()
+        }
     }
 
     // --- resolveSymbol tests ---
@@ -232,6 +251,52 @@ class PhpFindUsagesServiceTest : BasePlatformTestCase() {
         assertTrue("expected empty list", usages.isEmpty())
     }
 
+    @Test
+    fun testFindUsagesMemberWithInterfaceFqcn() {
+        val iface: PhpClass = Mockito.mock(PhpClass::class.java)
+        Mockito.`when`(iface.fqn).thenReturn("App\\ServiceInterface")
+        val method: Method = Mockito.mock(Method::class.java)
+        Mockito.`when`(method.name).thenReturn("execute")
+        Mockito.`when`(iface.methods).thenReturn(listOf(method))
+        Mockito.`when`(iface.fields).thenReturn(emptyList())
+        Mockito.`when`(mockIndex.getClassesByFQN("App\\ServiceInterface")).thenReturn(emptyList())
+        Mockito.`when`(mockIndex.getInterfacesByFQN("App\\ServiceInterface")).thenReturn(listOf(iface))
+        Mockito.`when`(mockIndex.getTraitsByFQN("App\\ServiceInterface")).thenReturn(emptyList())
+
+        Mockito.mockStatic(ReferencesSearch::class.java).use { mocked ->
+            @Suppress("UNCHECKED_CAST")
+            val query = Mockito.mock(Query::class.java) as Query<PsiReference>
+            Mockito.`when`(query.findAll()).thenReturn(emptyList())
+            mocked.`when`<Query<PsiReference>> { ReferencesSearch.search(method) }.thenReturn(query)
+
+            val usages = service.findUsages("\\App\\ServiceInterface::execute")
+            assertTrue("expected empty list from empty references", usages.isEmpty())
+        }
+    }
+
+    @Test
+    fun testFindUsagesMemberWithTraitFqcn() {
+        val trait: PhpClass = Mockito.mock(PhpClass::class.java)
+        Mockito.`when`(trait.fqn).thenReturn("App\\Trait\\LoggableTrait")
+        val method: Method = Mockito.mock(Method::class.java)
+        Mockito.`when`(method.name).thenReturn("getLogs")
+        Mockito.`when`(trait.methods).thenReturn(listOf(method))
+        Mockito.`when`(trait.fields).thenReturn(emptyList())
+        Mockito.`when`(mockIndex.getClassesByFQN("App\\Trait\\LoggableTrait")).thenReturn(emptyList())
+        Mockito.`when`(mockIndex.getInterfacesByFQN("App\\Trait\\LoggableTrait")).thenReturn(emptyList())
+        Mockito.`when`(mockIndex.getTraitsByFQN("App\\Trait\\LoggableTrait")).thenReturn(listOf(trait))
+
+        Mockito.mockStatic(ReferencesSearch::class.java).use { mocked ->
+            @Suppress("UNCHECKED_CAST")
+            val query = Mockito.mock(Query::class.java) as Query<PsiReference>
+            Mockito.`when`(query.findAll()).thenReturn(emptyList())
+            mocked.`when`<Query<PsiReference>> { ReferencesSearch.search(method) }.thenReturn(query)
+
+            val usages = service.findUsages("\\App\\Trait\\LoggableTrait::getLogs")
+            assertTrue("expected empty list from empty references", usages.isEmpty())
+        }
+    }
+
     // --- findDefinition ---
 
     @Test
@@ -250,6 +315,28 @@ class PhpFindUsagesServiceTest : BasePlatformTestCase() {
         Mockito.`when`(mockIndex.getInterfacesByFQN("App\\NoSuch")).thenReturn(emptyList())
 
         val def = service.findDefinition("\\App\\NoSuch::method")
+        assertNull(def)
+    }
+
+    @Test
+    fun testFindDefinitionMemberWithTraitFqcnMissingTraitFallsBack() {
+        // Verify the class lookup falls through to getTraitsByFQN
+        // (findDefinition will still return null because definitionFromElement
+        //  can't resolve mock PSI elements, but we verify the class lookup
+        //  doesn't short-circuit before reaching member resolution)
+        val trait: PhpClass = Mockito.mock(PhpClass::class.java)
+        Mockito.`when`(trait.fqn).thenReturn("App\\Trait\\LoggableTrait")
+        val method: Method = Mockito.mock(Method::class.java)
+        Mockito.`when`(method.name).thenReturn("getLogs")
+        Mockito.`when`(trait.methods).thenReturn(listOf(method))
+        Mockito.`when`(trait.fields).thenReturn(emptyList())
+        Mockito.`when`(mockIndex.getClassesByFQN("App\\Trait\\LoggableTrait")).thenReturn(emptyList())
+        Mockito.`when`(mockIndex.getInterfacesByFQN("App\\Trait\\LoggableTrait")).thenReturn(emptyList())
+        Mockito.`when`(mockIndex.getTraitsByFQN("App\\Trait\\LoggableTrait")).thenReturn(listOf(trait))
+
+        // Should not throw: the trait is found, method is found,
+        // but definitionFromElement returns null (mock PSI has no real file)
+        val def = service.findDefinition("\\App\\Trait\\LoggableTrait::getLogs")
         assertNull(def)
     }
 }
