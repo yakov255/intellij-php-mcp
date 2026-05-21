@@ -3,6 +3,7 @@ package com.github.yakov255.intellijphpmcp.mcp
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.project.Project
+import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiReference
 import com.intellij.psi.search.searches.ReferencesSearch
 import com.jetbrains.php.PhpIndex
@@ -14,6 +15,13 @@ sealed class SymbolResolutionResult {
 }
 
 data class UsageInfo(
+    val relativePath: String,
+    val line: Int,
+    val column: Int,
+    val lineText: String,
+)
+
+data class DefinitionInfo(
     val relativePath: String,
     val line: Int,
     val column: Int,
@@ -87,6 +95,13 @@ class PhpFindUsagesService(private val project: Project) {
         }
     }
 
+    fun findDefinition(fqcn: String): DefinitionInfo? {
+        return ReadAction.compute<DefinitionInfo?, RuntimeException> {
+            if (fqcn.contains("::")) findMemberDefinition(fqcn)
+            else findClassDefinition(fqcn)
+        }
+    }
+
     private fun findClassUsages(fqcn: String): List<UsageInfo> {
         val clean = fqcn.trimStart('\\')
         val phpIndex = PhpIndex.getInstance(project)
@@ -115,6 +130,47 @@ class PhpFindUsagesService(private val project: Project) {
                 .mapNotNull { it.toUsageInfo() }
         }
         return emptyList()
+    }
+
+    private fun findClassDefinition(fqcn: String): DefinitionInfo? {
+        val clean = fqcn.trimStart('\\')
+        val phpIndex = PhpIndex.getInstance(project)
+        val phpClass = phpIndex.getClassesByFQN(clean).firstOrNull()
+            ?: phpIndex.getInterfacesByFQN(clean).firstOrNull()
+            ?: phpIndex.getTraitsByFQN(clean).firstOrNull()
+            ?: return null
+        return definitionFromElement(phpClass)
+    }
+
+    private fun findMemberDefinition(fullSymbol: String): DefinitionInfo? {
+        val parts = fullSymbol.split("::", limit = 2)
+        val className = parts[0].trimStart('\\')
+        val memberName = parts[1].trimStart('$')
+        val phpIndex = PhpIndex.getInstance(project)
+        val phpClass = phpIndex.getClassesByFQN(className).firstOrNull()
+            ?: phpIndex.getInterfacesByFQN(className).firstOrNull()
+            ?: return null
+
+        phpClass.methods.firstOrNull { it.name == memberName }?.let { return definitionFromElement(it) }
+        phpClass.fields.firstOrNull { it.name == memberName }?.let { return definitionFromElement(it) }
+        return null
+    }
+
+    private fun definitionFromElement(element: PsiElement): DefinitionInfo? {
+        val file = element.containingFile ?: return null
+        val doc = file.viewProvider.document ?: return null
+        val range = element.textRange ?: return null
+        val offset = range.startOffset
+        val line = doc.getLineNumber(offset)
+        val lineStart = doc.getLineStartOffset(line)
+        val lineEnd = doc.getLineEndOffset(line)
+        val lineText = doc.charsSequence.substring(lineStart, lineEnd).trim()
+        return DefinitionInfo(
+            relativePath = relativePath(file.virtualFile.path),
+            line = line + 1,
+            column = offset - lineStart + 1,
+            lineText = lineText,
+        )
     }
 
     private fun PsiReference.toUsageInfo(): UsageInfo? {

@@ -5,8 +5,9 @@ MCP (Model Context Protocol) server plugin for IntelliJ‑based IDEs that expose
 ## Tools
 
 | Tool | Description |
-|---|---|
+ |---|---|---|
 | `find_usages` | Finds all usages of a PHP symbol — class, method (`::methodName`), field (`::$field`). Accepts FQCN or short name (with ambiguity resolution). |
+| `find_definition` | Finds the declaration location of a PHP symbol — file, line, column, and source line. Supports the same formats as `find_usages`. |
 | `inspect_php_file` | Returns the public API contract of a PHP file: namespace, imports, public methods (bodies stripped), public fields. Non‑public members are removed. |
 
 ## Requirements
@@ -57,7 +58,7 @@ Run the test script against a running IDE:
 ```
 src/main/kotlin/com/github/yakov255/intellijphpmcp/mcp/
 ├── PhpToolset.kt                    # MCP tool definitions
-├── PhpFindUsagesService.kt          # Symbol resolution + ReferencesSearch
+├── PhpFindUsagesService.kt          # Symbol resolution, find usages, find definition
 ├── PhpContractInspectorService.kt   # Public API contract extraction
 ```
 

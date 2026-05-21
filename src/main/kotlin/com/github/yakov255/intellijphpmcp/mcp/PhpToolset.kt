@@ -76,6 +76,51 @@ class PhpToolset : McpToolset {
         return service.inspectFile(filePath)
     }
 
+    @McpTool
+    @McpDescription(
+        "Finds the declaration (definition) location of a PHP symbol: class, method, or field. " +
+        "Returns the file path, line number, column, and source line where the symbol is defined. " +
+        "Supports FQCN like '\\App\\Service\\EmailService', member syntax 'ClassName::methodName' or 'ClassName::\$fieldName', " +
+        "and short names (with ambiguity resolution)."
+    )
+    suspend fun find_definition(
+        @McpDescription("The symbol to find. FQCN like '\\App\\Service\\EmailService', or 'ClassName::methodName', or short name like 'EmailService'")
+        symbol: String,
+        @McpDescription("Absolute path to the project root directory")
+        projectPath: String? = null,
+    ): FindDefinitionResult {
+        val project = resolveProject(projectPath)
+        val service = project.getService(PhpFindUsagesService::class.java)
+
+        val fqcnResult = service.resolveSymbol(symbol)
+        if (fqcnResult is SymbolResolutionResult.Ambiguous) {
+            return FindDefinitionResult(
+                error = "Symbol '$symbol' is ambiguous. Multiple symbols match. " +
+                    "Please provide the fully qualified name. Possible matches:\n" +
+                    fqcnResult.fqcns.joinToString("\n"),
+            )
+        }
+
+        val fqcn = when (fqcnResult) {
+            is SymbolResolutionResult.Resolved -> fqcnResult.fqcn
+            is SymbolResolutionResult.NotFound -> return FindDefinitionResult(
+                error = "Symbol '$symbol' not found in the project.",
+            )
+        }
+
+        val definition = service.findDefinition(fqcn)
+        if (definition == null) {
+            return FindDefinitionResult(error = "Definition not found for '$symbol'.")
+        }
+
+        return FindDefinitionResult(
+            file = definition.relativePath,
+            line = definition.line,
+            column = definition.column,
+            lineText = definition.lineText,
+        )
+    }
+
     // TODO: Use McpProjectLocationInputs.resolveProject() from the MCP framework
     // for proper multi-project resolution (session headers, roots capability)
     private fun resolveProject(projectPath: String?): Project {
@@ -116,4 +161,13 @@ data class UsageLocation(
     val column: Int,
     val lineText: String,
     val fqcn: String,
+)
+
+@Serializable
+data class FindDefinitionResult(
+    val file: String? = null,
+    val line: Int? = null,
+    val column: Int? = null,
+    val lineText: String? = null,
+    val error: String? = null,
 )
