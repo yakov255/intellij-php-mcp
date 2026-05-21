@@ -9,6 +9,7 @@ plugins {
 
 dependencies {
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.mockito:mockito-core:5.8.0")
 
     intellijPlatform {
         intellijIdeaUltimate("2025.2.6.2")

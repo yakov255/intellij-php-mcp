@@ -29,7 +29,9 @@ data class DefinitionInfo(
 )
 
 @Service(Service.Level.PROJECT)
-class PhpFindUsagesService(private val project: Project) {
+open class PhpFindUsagesService(private val project: Project) {
+
+    protected open fun getPhpIndex(): PhpIndex = PhpIndex.getInstance(project)
 
     fun resolveSymbol(symbol: String): SymbolResolutionResult {
         val clean = symbol.trimStart('\\')
@@ -42,7 +44,7 @@ class PhpFindUsagesService(private val project: Project) {
         val className = fullSymbol.substringBefore("::").trimStart('\\')
         val memberName = fullSymbol.substringAfter("::")
         return ReadAction.compute<SymbolResolutionResult, RuntimeException> {
-            val phpIndex = PhpIndex.getInstance(project)
+            val phpIndex = getPhpIndex()
             if (className.contains('\\')) {
                 if (classExists(className, phpIndex)) SymbolResolutionResult.Resolved(fullSymbol)
                 else SymbolResolutionResult.NotFound
@@ -64,7 +66,7 @@ class PhpFindUsagesService(private val project: Project) {
 
     private fun resolveFqcn(fqcn: String): SymbolResolutionResult {
         return ReadAction.compute<SymbolResolutionResult, RuntimeException> {
-            val phpIndex = PhpIndex.getInstance(project)
+            val phpIndex = getPhpIndex()
             if (classExists(fqcn, phpIndex)) SymbolResolutionResult.Resolved(fqcn)
             else SymbolResolutionResult.NotFound
         }
@@ -72,7 +74,7 @@ class PhpFindUsagesService(private val project: Project) {
 
     private fun resolveShortName(name: String): SymbolResolutionResult {
         return ReadAction.compute<SymbolResolutionResult, RuntimeException> {
-            val phpIndex = PhpIndex.getInstance(project)
+            val phpIndex = getPhpIndex()
             val matches = phpIndex.getClassesByName(name).mapNotNull { it.fqn }
             when {
                 matches.size == 1 -> SymbolResolutionResult.Resolved(matches[0])
@@ -104,7 +106,7 @@ class PhpFindUsagesService(private val project: Project) {
 
     private fun findClassUsages(fqcn: String): List<UsageInfo> {
         val clean = fqcn.trimStart('\\')
-        val phpIndex = PhpIndex.getInstance(project)
+        val phpIndex = getPhpIndex()
         val phpClass = phpIndex.getClassesByFQN(clean).firstOrNull()
             ?: phpIndex.getInterfacesByFQN(clean).firstOrNull()
             ?: phpIndex.getTraitsByFQN(clean).firstOrNull()
@@ -117,7 +119,7 @@ class PhpFindUsagesService(private val project: Project) {
         val parts = fullSymbol.split("::", limit = 2)
         val className = parts[0].trimStart('\\')
         val memberName = parts[1].trimStart('$')
-        val phpIndex = PhpIndex.getInstance(project)
+        val phpIndex = getPhpIndex()
         val phpClass = phpIndex.getClassesByFQN(className).firstOrNull()
             ?: return emptyList()
 
@@ -134,7 +136,7 @@ class PhpFindUsagesService(private val project: Project) {
 
     private fun findClassDefinition(fqcn: String): DefinitionInfo? {
         val clean = fqcn.trimStart('\\')
-        val phpIndex = PhpIndex.getInstance(project)
+        val phpIndex = getPhpIndex()
         val phpClass = phpIndex.getClassesByFQN(clean).firstOrNull()
             ?: phpIndex.getInterfacesByFQN(clean).firstOrNull()
             ?: phpIndex.getTraitsByFQN(clean).firstOrNull()
@@ -146,7 +148,7 @@ class PhpFindUsagesService(private val project: Project) {
         val parts = fullSymbol.split("::", limit = 2)
         val className = parts[0].trimStart('\\')
         val memberName = parts[1].trimStart('$')
-        val phpIndex = PhpIndex.getInstance(project)
+        val phpIndex = getPhpIndex()
         val phpClass = phpIndex.getClassesByFQN(className).firstOrNull()
             ?: phpIndex.getInterfacesByFQN(className).firstOrNull()
             ?: return null
