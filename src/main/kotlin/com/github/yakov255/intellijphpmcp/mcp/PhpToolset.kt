@@ -121,6 +121,55 @@ class PhpToolset : McpToolset {
         )
     }
 
+    @McpTool
+    @McpDescription(
+        "Finds all implementations (classes that implement an interface, or subclasses of a class) " +
+        "for a given PHP interface or class. Returns the file path, line number, column, source line, " +
+        "and FQCN for each implementing class. " +
+        "Supports FQCN like '\\App\\Contract\\ServiceInterface' or short names (with ambiguity resolution)."
+    )
+    suspend fun find_implementations(
+        @McpDescription("The interface or class FQCN to find implementations for, like '\\App\\Contract\\ServiceInterface'")
+        symbol: String,
+        @McpDescription("Absolute path to the project root directory")
+        projectPath: String? = null,
+    ): FindImplementationsResult {
+        val project = resolveProject(projectPath)
+        val service = project.getService(PhpFindUsagesService::class.java)
+
+        val fqcnResult = service.resolveSymbol(symbol)
+        if (fqcnResult is SymbolResolutionResult.Ambiguous) {
+            return FindImplementationsResult(
+                error = "Symbol '$symbol' is ambiguous. Multiple symbols match. " +
+                    "Please provide the fully qualified name. Possible matches:\n" +
+                    fqcnResult.fqcns.joinToString("\n"),
+                implementations = emptyList(),
+            )
+        }
+
+        val fqcn = when (fqcnResult) {
+            is SymbolResolutionResult.Resolved -> fqcnResult.fqcn
+            is SymbolResolutionResult.NotFound -> return FindImplementationsResult(
+                error = "Symbol '$symbol' not found in the project.",
+                implementations = emptyList(),
+            )
+        }
+
+        val implementations = service.findImplementations(fqcn)
+        return FindImplementationsResult(
+            error = null,
+            implementations = implementations.map { impl ->
+                ImplementationLocation(
+                    file = impl.relativePath,
+                    line = impl.line,
+                    column = impl.column,
+                    lineText = impl.lineText,
+                    fqcn = impl.fqcn,
+                )
+            },
+        )
+    }
+
     // TODO: Use McpProjectLocationInputs.resolveProject() from the MCP framework
     // for proper multi-project resolution (session headers, roots capability)
     private fun resolveProject(projectPath: String?): Project {
@@ -170,4 +219,19 @@ data class FindDefinitionResult(
     val column: Int? = null,
     val lineText: String? = null,
     val error: String? = null,
+)
+
+@Serializable
+data class FindImplementationsResult(
+    val error: String? = null,
+    val implementations: List<ImplementationLocation>,
+)
+
+@Serializable
+data class ImplementationLocation(
+    val file: String,
+    val line: Int,
+    val column: Int,
+    val lineText: String,
+    val fqcn: String,
 )

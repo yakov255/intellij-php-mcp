@@ -5,39 +5,43 @@ PORT="${MCP_PORT:-64344}"
 HOST="${MCP_HOST:-127.0.0.1}"
 MCP_URL="http://$HOST:$PORT"
 SSE_TIMEOUT="${SSE_TIMEOUT:-15}"
-CALL_TIMEOUT="${CALL_TIMEOUT:-30}"
+PROJECT_DIR="$(cd "$(dirname "$0")/test-project" && pwd)"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+CYAN='\033[1;36m'
 NC='\033[0m'
 
 usage() {
     cat <<EOF
-Usage: $(basename "$0") [OPTIONS] <symbol>
+Usage: $(basename "$0") [OPTIONS] <symbol-or-command>
+
+Tests MCP tools against the local test project ($PROJECT_DIR).
+
+Commands:
+  <symbol>              Find usages of a symbol (default tool)
+  list                  List all available MCP tools
 
 Options:
   -p, --port PORT       MCP server port (default: $PORT, env: MCP_PORT)
   -h, --host HOST       MCP server host (default: $HOST, env: MCP_HOST)
-  -P, --project PATH    Project root path (optional, for multi-project setups)
-  -l, --list-tools      List all available tools instead of calling find_usages
-  -t, --tool NAME       Tool name to call (default: find_usages)
-  -a, --args JSON       Tool arguments as JSON (overrides symbol/project)
-  --raw                 Print raw JSON response instead of formatted output
+  -t, --tool NAME       Tool to call (default: find_usages)
+  -a, --args JSON       Raw tool arguments as JSON
+  --raw                 Print raw server response
   --help                Show this help
 
 Examples:
-  $(basename "$0") "\\\\App\\\\Service\\\\EmailService::sendEmail"
-  $(basename "$0") -P /path/to/project "\\\\Raketa\\\\Library\\\\BehatContext\\\\Config"
-  $(basename "$0") -l
-  $(basename "$0") -t get_file_problems -a '{"filePath":"src/Foo.php"}'
+  $(basename "$0") "\\\\App\\\\Trait\\\\MetricsTrait::getMetrics"
+  $(basename "$0") -t find_definition "\\\\App\\\\Trait\\\\MetricsTrait::getMetrics"
+  $(basename "$0") -t get_file_problems -a '{"filePath":"src/Service/Raketa.php"}'
+  $(basename "$0") -t inspect_php_file -a '{"filePath":"src/Service/Raketa.php"}'
+  $(basename "$0") list
 EOF
     exit 1
 }
 
 SYMBOL=""
-PROJECT_PATH=""
-LIST_TOOLS=false
 TOOL="find_usages"
 TOOL_ARGS=""
 RAW=false
@@ -46,32 +50,31 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         -p|--port)   PORT="$2"; shift 2 ;;
         -h|--host)   HOST="$2"; MCP_URL="http://$HOST:$PORT"; shift 2 ;;
-        -P|--project) PROJECT_PATH="$2"; shift 2 ;;
-        -l|--list-tools) LIST_TOOLS=true; shift ;;
         -t|--tool)   TOOL="$2"; shift 2 ;;
         -a|--args)   TOOL_ARGS="$2"; shift 2 ;;
         --raw)       RAW=true; shift ;;
         --help)      usage ;;
         -*)          echo -e "${RED}Unknown option: $1${NC}"; usage ;;
+        list)        SYMBOL="list"; TOOL="tools/list"; shift ;;
         *)           SYMBOL="$1"; shift ;;
     esac
 done
 
-if [ "$LIST_TOOLS" = false ] && [ -z "$SYMBOL" ] && [ -z "$TOOL_ARGS" ]; then
+if [ -z "$SYMBOL" ] && [ -z "$TOOL_ARGS" ]; then
     echo -e "${RED}Error: symbol or --args required${NC}"
     usage
 fi
 
-# Check server is reachable (SSE connections time out, exit code may be 28)
+# Check server
 echo -e "${YELLOW}Checking MCP server at $MCP_URL/sse ...${NC}"
 HTTP_CODE=$(set +e; curl -s -o /dev/null -w "%{http_code}" "$MCP_URL/sse" --max-time 2 2>/dev/null; true)
 if [ "$HTTP_CODE" != "200" ]; then
     echo -e "${RED}Server returned HTTP $HTTP_CODE or is unreachable${NC}"
     exit 1
 fi
-echo -e "${GREEN}Server is reachable${NC}"
+echo -e "${GREEN}Server OK${NC}"
 
-# Start SSE listener in background
+# SSE session
 SSE_FILE=$(mktemp /tmp/mcp_sse.XXXXXX)
 trap "rm -f '$SSE_FILE'" EXIT
 
@@ -79,16 +82,15 @@ timeout "$SSE_TIMEOUT" curl -sN "$MCP_URL/sse" --max-time "$SSE_TIMEOUT" > "$SSE
 SSE_PID=$!
 sleep 0.5
 
-# Extract session ID
 SESSION_ID=$(grep -oP 'sessionId=[a-f0-9-]+' "$SSE_FILE" | head -1 || true)
 if [ -z "$SESSION_ID" ]; then
-    echo -e "${RED}Failed to get session ID from SSE${NC}"
+    echo -e "${RED}Failed to get session ID${NC}"
     kill "$SSE_PID" 2>/dev/null
     exit 1
 fi
 echo -e "${GREEN}Session: $SESSION_ID${NC}"
 
-# Helper to POST and check for "Accepted"
+# POST helper
 post() {
     local id="$1" method="$2" params="$3"
     local resp
@@ -106,46 +108,44 @@ post() {
 }
 
 # Initialize
-echo -e "${YELLOW}Initializing MCP session...${NC}"
+echo -e "${YELLOW}Initializing...${NC}"
 post 1 "initialize" '{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}'
 sleep 0.3
-
-# Initialized notification
 post 2 "notifications/initialized" '{}'
 sleep 0.3
 
-if [ "$LIST_TOOLS" = true ]; then
+# Call tool
+if [ "$TOOL" = "tools/list" ]; then
     echo -e "${YELLOW}Listing tools...${NC}"
     post 3 "tools/list" '{}'
     sleep 2
 else
-    # Build arguments
     if [ -n "$TOOL_ARGS" ]; then
         ARGS="$TOOL_ARGS"
     else
-        ARGS="{\"symbol\":\"$SYMBOL\""
-        [ -n "$PROJECT_PATH" ] && ARGS="$ARGS,\"projectPath\":\"$PROJECT_PATH\""
-        ARGS="$ARGS}"
+        ESCAPED_SYMBOL=$(echo "$SYMBOL" | sed 's/\\/\\\\/g')
+        ARGS="{\"symbol\":\"$ESCAPED_SYMBOL\",\"projectPath\":\"$PROJECT_DIR\"}"
     fi
 
-    echo -e "${YELLOW}Calling $TOOL ...${NC}"
-    echo -e "${YELLOW}Args: $ARGS${NC}"
+    echo -e "${YELLOW}> $TOOL${NC}"
+    echo "  project: $PROJECT_DIR"
+    echo "  args:    $ARGS"
     post 10 "tools/call" "{\"name\":\"$TOOL\",\"arguments\":$ARGS}"
     sleep 3
 fi
 
-# Kill SSE listener
+# Cleanup
 kill "$SSE_PID" 2>/dev/null
 wait "$SSE_PID" 2>/dev/null || true
 
 if [ "$RAW" = true ]; then
     echo ""
-    echo -e "${GREEN}=== Raw SSE response ===${NC}"
+    echo -e "${GREEN}=== Raw response ===${NC}"
     cat "$SSE_FILE"
     exit 0
 fi
 
-# Parse the last meaningful result
+# Parse and display
 RESULT=$(grep -oP 'data: \{"id":[0-9]+.*' "$SSE_FILE" | tail -1 | sed 's/^data: //' || true)
 
 if [ -z "$RESULT" ]; then
@@ -154,40 +154,62 @@ if [ -z "$RESULT" ]; then
     exit 1
 fi
 
-# Pretty print
 echo ""
 echo -e "${GREEN}=== Result ===${NC}"
 
-if [ "$LIST_TOOLS" = true ]; then
-    echo "$RESULT" | python3 -c "
+echo "$RESULT" | python3 -c "
 import json, sys
 data = json.load(sys.stdin)
-tools = data.get('result', {}).get('tools', [])
-for t in tools:
-    name = t.get('name', '')
-    desc = t.get('description', '')[:80]
-    print(f'  \033[1;36m{name}\033[0m — {desc}')
-print(f'\nTotal: {len(tools)} tools')
-" 2>/dev/null || echo "$RESULT" | python3 -m json.tool 2>/dev/null || echo "$RESULT" || true
-else
-    echo "$RESULT" | python3 -c "
-import json, sys
-data = json.load(sys.stdin)
-content = data.get('result', {}).get('structuredContent', {})
-err = content.get('error')
-usages = content.get('usages', [])
+
+if 'result' not in data:
+    err = data.get('error', {})
+    print(json.dumps(data, indent=2))
+    sys.exit(0)
+
+result = data['result']
+
+if 'tools' in result:
+    tools = result['tools']
+    for t in tools:
+        name = t.get('name', '')
+        desc = t.get('description', '')[:80]
+        print(f'  \033[1;36m{name}\033[0m - {desc}')
+    print(f'\nTotal: {len(tools)} tools')
+    sys.exit(0)
+
+structured = result.get('structuredContent', {})
+err = structured.get('error')
 
 if err:
     print(f'  \033[0;31mERROR: {err}\033[0m')
-elif not usages:
-    print('  No usages found')
-else:
+    sys.exit(0)
+
+# Fallback: show structured content first
+if structured:
+    if 'error' in structured:
+        del structured['error']
+    print(f'  structuredContent:')
+    print(json.dumps(structured, indent=4))
+    print()
+
+# Show usages if present
+usages = structured.get('usages', result.get('usages', []))
+if usages:
     print(f'  Found {len(usages)} usage(s):')
     print()
     for u in usages:
-        print(f'  \033[1;36m{u[\"file\"]}\033[0m')
-        print(f'    Line {u[\"line\"]}:{u[\"column\"]}')
-        print(f'    {u[\"lineText\"]}')
+        print(f'  \033[1;36m{u.get(\"file\", u.get(\"relativePath\", \"?\"))}\033[0m')
+        print(f'    Line {u.get(\"line\", \"?\")}:{u.get(\"column\", \"?\")}')
+        txt = u.get('lineText', '')
+        if txt:
+            print(f'    {txt}')
         print()
+elif structured:
+    pass
+elif 'content' in result:
+    for item in result['content']:
+        if item.get('type') == 'text':
+            print(item.get('text', ''))
+else:
+    print(json.dumps(result, indent=2))
 " 2>/dev/null || echo "$RESULT" | python3 -m json.tool 2>/dev/null || echo "$RESULT" || true
-fi

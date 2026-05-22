@@ -1,0 +1,12 @@
+{
+    "name": "test/php-mcp",
+    "description": "Test project for intellij-php-mcp plugin",
+    "autoload": {
+        "psr-4": {
+            "App\\": "src/"
+        }
+    },
+    "require": {
+        "php": ">=8.2"
+    }
+}

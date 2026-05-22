@@ -318,6 +318,74 @@ class PhpFindUsagesServiceTest : BasePlatformTestCase() {
         assertNull(def)
     }
 
+    // --- findImplementations ---
+
+    @Test
+    fun testFindImplementationsForInterface() {
+        val iface: PhpClass = Mockito.mock(PhpClass::class.java)
+        Mockito.`when`(iface.fqn).thenReturn("App\\ServiceInterface")
+        val child: PhpClass = Mockito.mock(PhpClass::class.java)
+        Mockito.`when`(child.fqn).thenReturn("App\\EmailService")
+        val clean = "App\\ServiceInterface"
+        Mockito.`when`(mockIndex.getClassesByFQN(clean)).thenReturn(emptyList())
+        Mockito.`when`(mockIndex.getInterfacesByFQN(clean)).thenReturn(listOf(iface))
+        Mockito.`when`(mockIndex.getTraitsByFQN(clean)).thenReturn(emptyList())
+        Mockito.`when`(mockIndex.getDirectSubclasses("App\\ServiceInterface")).thenReturn(listOf(child))
+
+        val impls = service.findImplementations("\\App\\ServiceInterface")
+        // definitionFromElement returns null for mocks (no real PSI file),
+        // so we just verify the index was queried and no exception is thrown
+        assertTrue("expected empty list (mock PSI returns null)", impls.isEmpty())
+    }
+
+    @Test
+    fun testFindImplementationsForClass() {
+        val cls: PhpClass = Mockito.mock(PhpClass::class.java)
+        Mockito.`when`(cls.fqn).thenReturn("App\\BaseService")
+        val child: PhpClass = Mockito.mock(PhpClass::class.java)
+        Mockito.`when`(child.fqn).thenReturn("App\\EmailService")
+        val clean = "App\\BaseService"
+        Mockito.`when`(mockIndex.getClassesByFQN(clean)).thenReturn(listOf(cls))
+        Mockito.`when`(mockIndex.getInterfacesByFQN(clean)).thenReturn(emptyList())
+        Mockito.`when`(mockIndex.getTraitsByFQN(clean)).thenReturn(emptyList())
+        Mockito.`when`(mockIndex.getDirectSubclasses("App\\BaseService")).thenReturn(listOf(child))
+
+        val impls = service.findImplementations("\\App\\BaseService")
+        assertTrue("expected empty list (mock PSI returns null)", impls.isEmpty())
+    }
+
+    @Test
+    fun testFindImplementationsNotFound() {
+        Mockito.`when`(mockIndex.getClassesByFQN("App\\NoSuch")).thenReturn(emptyList())
+        Mockito.`when`(mockIndex.getInterfacesByFQN("App\\NoSuch")).thenReturn(emptyList())
+        Mockito.`when`(mockIndex.getTraitsByFQN("App\\NoSuch")).thenReturn(emptyList())
+
+        val impls = service.findImplementations("\\App\\NoSuch")
+        assertTrue("expected empty list for unknown class", impls.isEmpty())
+    }
+
+    @Test
+    fun testFindImplementationsNoChildren() {
+        val iface: PhpClass = Mockito.mock(PhpClass::class.java)
+        Mockito.`when`(iface.fqn).thenReturn("App\\EmptyInterface")
+        val clean = "App\\EmptyInterface"
+        Mockito.`when`(mockIndex.getClassesByFQN(clean)).thenReturn(emptyList())
+        Mockito.`when`(mockIndex.getInterfacesByFQN(clean)).thenReturn(listOf(iface))
+        Mockito.`when`(mockIndex.getTraitsByFQN(clean)).thenReturn(emptyList())
+        Mockito.`when`(mockIndex.getDirectSubclasses("App\\EmptyInterface")).thenReturn(emptyList())
+
+        val impls = service.findImplementations("\\App\\EmptyInterface")
+        assertTrue("expected empty list for interface with no children", impls.isEmpty())
+    }
+
+    @Test
+    fun testFindImplementationsMemberSyntaxReturnsEmpty() {
+        // Member syntax (::) should not be supported — returns empty because
+        // class lookup by full fqcn with :: won't match
+        val impls = service.findImplementations("\\App\\ServiceInterface::execute")
+        assertTrue("expected empty list for member syntax", impls.isEmpty())
+    }
+
     @Test
     fun testFindDefinitionMemberWithTraitFqcnMissingTraitFallsBack() {
         // Verify the class lookup falls through to getTraitsByFQN

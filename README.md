@@ -5,9 +5,10 @@ MCP (Model Context Protocol) server plugin for IntelliJ‑based IDEs that expose
 ## Tools overview
 
 | Tool | Description |
-|---|---|
+|---|---|---|
 | `find_usages` | Finds all usages of a PHP symbol — class, method (`::method`), field (`::$field`), interface, trait |
 | `find_definition` | Finds the declaration location — file, line, column, source line |
+| `find_implementations` | Finds all classes that implement an interface or extend a class |
 | `inspect_php_file` | Returns the public API contract of a PHP file (bodies stripped, non-public removed) |
 
 ---
@@ -104,6 +105,40 @@ Finds where a PHP symbol is declared.
    Line:   10
    Column: 1
    Source: class EmailService extends AbstractService implements ServiceInterface
+```
+
+---
+
+## `find_implementations`
+
+Finds all classes that directly implement an interface or extend a class.
+
+### Parameters
+
+| Parameter | Type | Description |
+|---|---|---|
+| `symbol` | `string` (required) | FQCN of interface or class (`\App\Contract\ServiceInterface`), or short name (`ServiceInterface`) with ambiguity resolution |
+| `projectPath` | `string?` | Absolute path to the project root. Required when multiple projects are open |
+
+### Edge cases
+
+- **Class** is also supported — returns direct subclasses via `getDirectSubclasses()`
+- **Interface** — returns all classes that directly implement it
+- **Not found** returns `{ error: "Symbol '...' not found in the project.", implementations: [] }`
+- **Ambiguous short name** returns ambiguity error with all FQCNs listed
+- **No implementations** returns `{ implementations: [] }` with no error
+
+### Example
+
+```
+┃ Which classes implement \App\Contract\ServiceInterface?
+┃
+   ⚙ find_implementations [symbol=\App\Contract\ServiceInterface]
+
+   2 implementations found:
+
+   src/Service/EmailService.php:7       class EmailService extends AbstractService implements ServiceInterface
+   src/Service/UserService.php:8        class UserService implements ServiceInterface
 ```
 
 ---

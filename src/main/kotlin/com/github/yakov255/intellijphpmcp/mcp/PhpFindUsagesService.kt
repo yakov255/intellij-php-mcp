@@ -28,6 +28,14 @@ data class DefinitionInfo(
     val lineText: String,
 )
 
+data class ImplementationInfo(
+    val relativePath: String,
+    val line: Int,
+    val column: Int,
+    val lineText: String,
+    val fqcn: String,
+)
+
 @Service(Service.Level.PROJECT)
 open class PhpFindUsagesService(private val project: Project) {
 
@@ -101,6 +109,28 @@ open class PhpFindUsagesService(private val project: Project) {
         return ReadAction.compute<DefinitionInfo?, RuntimeException> {
             if (fqcn.contains("::")) findMemberDefinition(fqcn)
             else findClassDefinition(fqcn)
+        }
+    }
+
+    fun findImplementations(fqcn: String): List<ImplementationInfo> {
+        return ReadAction.compute<List<ImplementationInfo>, RuntimeException> {
+            val clean = fqcn.trimStart('\\')
+            val phpIndex = getPhpIndex()
+            val phpClass = phpIndex.getClassesByFQN(clean).firstOrNull()
+                ?: phpIndex.getInterfacesByFQN(clean).firstOrNull()
+                ?: phpIndex.getTraitsByFQN(clean).firstOrNull()
+                ?: return@compute emptyList()
+
+            phpIndex.getDirectSubclasses(clean).mapNotNull { child ->
+                val def = definitionFromElement(child) ?: return@mapNotNull null
+                ImplementationInfo(
+                    relativePath = def.relativePath,
+                    line = def.line,
+                    column = def.column,
+                    lineText = def.lineText,
+                    fqcn = child.fqn,
+                )
+            }
         }
     }
 
